@@ -3,6 +3,8 @@ name: Enterprise DevSecOps Pipeline
 on:
   push:
     branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
 
 env:
   REGISTRY: ghcr.io
@@ -29,33 +31,26 @@ jobs:
           pip install bandit
           bandit -r . -s B101
 
-      - name: 4. Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 5. Build Docker Image
+      - name: 4. Build Docker Image Test
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-      - name: 6. Push Image to GHCR
+      - name: 5. Log in & Push to GHCR (Main Only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: 7. Send Telegram Notification
+      - name: 6. Send Telegram Notification
         if: always()
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            🚀 DevOps Pipeline Report
+            🛡️ DevSecOps Audit Report
             -----------------------------------
-            📂 Repository: ${{ github.repository }}
+            📂 Repo: ${{ github.repository }}
+            🔀 Event: ${{ github.event_name }}
             👤 Author: ${{ github.actor }}
-            📌 Commit: ${{ github.sha }}
-            🚦 Status: ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILED' }}
-            -----------------------------------
-            🐳 Docker Image pushed to GHCR successfully!
+            🚦 Status: ${{ job.status == 'success' && '✅ PASSED' || '❌ BLOCKED' }}
