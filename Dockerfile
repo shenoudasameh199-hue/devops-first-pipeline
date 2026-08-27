@@ -1,10 +1,18 @@
-FROM python:3.10-slim AS builder
-WORKDIR /app
-COPY app.py .
-
 FROM python:3.10-slim
-RUN adduser --disabled-password appuser
-USER appuser
+
+# إنشاء مستخدم عادي لتفادي المخاطر الأمنية (Non-root user)
+RUN adduser --disabled-password --gecos '' appuser
+
 WORKDIR /app
-COPY --from=builder /app /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# تحويل الصلاحيات للمستخدم الجديد
+USER appuser
+
+EXPOSE 5000
+
 CMD ["python", "app.py"]

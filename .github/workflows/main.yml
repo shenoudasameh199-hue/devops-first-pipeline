@@ -29,16 +29,22 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: 3. Code Security Scan (Bandit)
+      - name: 3. Code Security Scan (Bandit SAST)
         run: |
           pip install bandit
           bandit -r . -s B101
 
-      - name: 4. Build Docker Image
+      - name: 4. Infrastructure as Code Scan (Checkov IaC)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          framework: dockerfile
+          soft_fail: true
+
+      - name: 5. Build Docker Image
         run: |
           docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
 
-      - name: 5. Container Vulnerability Scan (Trivy)
+      - name: 6. Container Vulnerability Scan (Trivy)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
@@ -46,13 +52,13 @@ jobs:
           exit-code: '0'
           severity: 'CRITICAL,HIGH'
 
-      - name: 6. Log in & Push to GHCR (Main Only)
+      - name: 7. Log in & Push to GHCR (Main Only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: 7. Create Auto Release & Tag (Main Only)
+      - name: 8. Create Auto Release & Tag (Main Only)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
@@ -60,17 +66,17 @@ jobs:
           name: Release v1.0.${{ github.run_number }}
           generate_release_notes: true
 
-      - name: 8. Send Telegram Notification
+      - name: 9. Send Telegram Notification
         if: always()
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            🚀 Enterprise Release Report
+            🛡️ Full DevSecOps Audit & IaC Report
             -----------------------------------
             📂 Repo: ${{ github.repository }}
             🔀 Event: ${{ github.event_name }}
             🏷️ Tag: ${{ github.event_name == 'push' && format('v1.0.{0}', github.run_number) || 'PR-Check' }}
-            👤 Author: ${{ github.actor }}
-            🚦 Status: ${{ job.status == 'success' && '✅ PASSED & RELEASED' || '❌ BLOCKED' }}
+            🔍 Audits: Bandit (SAST) + Checkov (IaC) + Trivy (Docker)
+            🚦 Status: ${{ job.status == 'success' && '✅ PASSED & SECURED' || '❌ BLOCKED' }}
