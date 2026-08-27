@@ -1,20 +1,36 @@
-name: Python CI Pipeline
+name: Enterprise DevSecOps Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
 jobs:
-  test:
+  security-and-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python Environment
         uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.10'
 
-      - name: Run Python script
-        run: python app.py
+      - name: Install Testing & Security Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 bandit
+
+      - name: Code Quality Audit (Flake8)
+        run: |
+          # فحص أخطاء بناء الكود والسيانتكس
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Security Vulnerability Scan (Bandit)
+        run: |
+          # فحص الثغرات الأمنية في سورس كود بويثون
+          bandit -r . -x ./.venv
+
+      - name: Run Application Unit Tests
+        run: |
+          python app.py
