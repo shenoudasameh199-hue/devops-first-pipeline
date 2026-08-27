@@ -1,36 +1,69 @@
-name: Enterprise DevSecOps Pipeline
+name: Enterprise DevSecOps & Container Pipeline
 
 on:
   push:
     branches: [ "main" ]
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  security-and-tests:
+  devsecops-pipeline:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - name: Checkout Repository
+      - name: 1. Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Set up Python Environment
+      - name: 2. Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install Testing & Security Tools
+      - name: 3. Static Security Scan (Bandit)
         run: |
-          python -m pip install --upgrade pip
-          pip install flake8 bandit
-
-      - name: Code Quality Audit (Flake8)
-        run: |
-          # فحص أخطاء بناء الكود والسيانتكس
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Security Vulnerability Scan (Bandit)
-        run: |
-          # فحص الثغرات الأمنية في سورس كود بويثون
+          pip install bandit
           bandit -r . -x ./.venv
 
-      - name: Run Application Unit Tests
+      - name: 4. Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 5. Build Docker Image
         run: |
-          python app.py
+          docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: 6. Container Vulnerability Scan (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}'
+          format: 'table'
+          exit-code: '0'
+          severity: 'CRITICAL,HIGH'
+
+      - name: 7. Push Image to GHCR
+        run: |
+          docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: 8. Send Telegram Notification
+        if: always()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          message: |
+            🚀 DevOps Pipeline Report
+            -----------------------------------
+            📂 Repository: ${{ github.repository }}
+            👤 Author: ${{ github.actor }}
+            📌 Commit: ${{ github.sha }}
+            🚦 Status: ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILED' }}
+            -----------------------------------
+            🐳 Docker Image pushed to GHCR successfully!
